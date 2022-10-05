@@ -413,7 +413,7 @@
     "price_postapoc": 7500,
     "material": [ "ch_steel", "wood" ],
     "techniques": [ "WBLOCK_1" ],
-    "cutting": 34,
+    "cutting": 33,
     "price": 16000,
   },
   {
@@ -427,7 +427,7 @@
     "price_postapoc": 9000,
     "material": [ "qt_steel", "wood" ],
     "techniques": [ "WBLOCK_1" ],
-    "cutting": 35,
+    "cutting": 34,
     "price": 16000,
   },
   {
