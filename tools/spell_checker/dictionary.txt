@@ -161,6 +161,7 @@ batching
 batlike
 batrachian
 bday
+beaked
 beartrap
 beebalm
 beeeeeeeeep
@@ -585,6 +586,7 @@ esters
 estoc
 estocs
 ethereally
+euoplocephalus
 eusocial
 evacs
 everburning
@@ -741,6 +743,7 @@ gasbomb
 gasgun
 gasmask
 gastank
+gastonia
 gastrolith
 geddoff
 genecraft
@@ -779,6 +782,8 @@ greaseproof
 greatbow
 greatclub
 greatclubs
+greatsword
+greatswords
 greenways
 grindle
 grinny
@@ -798,6 +803,7 @@ gutskin
 guvnah
 gymnocladus
 h
+hadrosaur
 hadrosaurus
 haematopoiesis
 haft
@@ -854,6 +860,7 @@ holybook
 homebrewing
 homovorus
 honeygold
+hooved
 hosomaki
 hotcut
 hotkey
@@ -1215,6 +1222,7 @@ myrmidon
 mythologically
 n
 nable
+nagamaki
 nailboard
 nakha
 nanocompound
@@ -1335,6 +1343,7 @@ pachyrhinosaurus
 packable
 paf
 palpably
+panoplosaurus
 papyrifera
 parabellum
 parabolan
@@ -1629,6 +1638,7 @@ scatterer
 scimitars
 scissorlimbs
 sclerotin
+scolosaurus
 scrabblin
 screecher
 screechin
@@ -2142,6 +2152,8 @@ zombullfrogs
 zpzzzzpzz
 zubon
 zuul
+zweitimber
+zweitimbers
 zygomaticus
 zzz
 zzzzchzzzzchurzzzpileus
