@@ -142,7 +142,6 @@ static const itype_id itype_120mm_HEAT( "120mm_HEAT" );
 static const itype_id itype_40x46mm_m433( "40x46mm_m433" );
 static const itype_id itype_556( "556" );
 static const itype_id itype_anesthetic( "anesthetic" );
-static const itype_id itype_badge_cybercop( "badge_cybercop" );
 static const itype_id itype_badge_deputy( "badge_deputy" );
 static const itype_id itype_badge_detective( "badge_detective" );
 static const itype_id itype_badge_doctor( "badge_doctor" );
@@ -226,7 +225,6 @@ static const trait_id trait_MARLOSS( "MARLOSS" );
 static const trait_id trait_MARLOSS_BLUE( "MARLOSS_BLUE" );
 static const trait_id trait_PARAIMMUNE( "PARAIMMUNE" );
 static const trait_id trait_PROF_CHURL( "PROF_CHURL" );
-static const trait_id trait_PROF_CYBERCO( "PROF_CYBERCO" );
 static const trait_id trait_PROF_FED( "PROF_FED" );
 static const trait_id trait_PROF_PD_DET( "PROF_PD_DET" );
 static const trait_id trait_PROF_POLICE( "PROF_POLICE" );
@@ -858,7 +856,7 @@ bool mattack::pull_metal_weapon( monster *z )
             // Take the total portion of metal in the item into account
             const float metal_fraction = metal_portion / static_cast<float>( weapon->type->mat_portion_total );
             if( !weapon->has_flag( flag_NO_UNWIELD ) && metal_portion ) {
-                const int wp_skill = foe->get_skill_level( skill_melee );
+                const float wp_skill = foe->get_skill_level( skill_melee );
                 // It takes a while
                 z->moves -= att_cost_pull;
                 int success = 100;
@@ -3385,24 +3383,6 @@ bool mattack::photograph( monster *z )
                 return true;
             }
         }
-    } else if( player_character.has_trait( trait_PROF_CYBERCO ) ) {
-        // And you're wearing your badge
-        if( player_character.is_wearing( itype_badge_cybercop ) ) {
-            if( one_in( 3 ) ) {
-                add_msg( m_info, _( "The %s winks a LED and departs.  One machine to another?" ),
-                         z->name() );
-                z->no_corpse_quiet = true;
-                z->no_extra_death_drops = true;
-                z->die( nullptr );
-                return false;
-            } else {
-                add_msg( m_info,
-                         _( "The %s acknowledges you as an officer responding, but hangs around to watch." ),
-                         z->name() );
-                add_msg( m_info, _( "Apparently yours aren't the only systems kept alive post-apocalypse." ) );
-                return true;
-            }
-        }
     }
 
     if( player_character.has_trait( trait_PROF_FED ) ) {
@@ -4714,6 +4694,22 @@ bool mattack::longswipe( monster *z )
     return true;
 }
 
+bool mattack::blow_whistle( monster *z )
+{
+    if( z->friendly ) {
+        // TODO: handle friendly monsters
+        return false;
+    }
+    // Only blow whistle if we can see you!
+    if( !z->sees( get_player_character() ) ) {
+        return false;
+    }
+    add_msg_if_player_sees( *z, m_warning, _( "The %1$s loudly blows their whistle!" ), z->name() );
+    sounds::sound( z->pos(), 40, sounds::sound_t::alarm, _( "FWEEEET!" ), false, "misc", "whistle" );
+
+    return true;
+}
+
 static void parrot_common( monster *parrot )
 {
     // It takes a while
@@ -5541,7 +5537,7 @@ bool mattack::bio_op_disarm( monster *z )
     /** @EFFECT_MELEE increases chance to avoid disarm */
     int their_roll = dice( 3, foe->get_limb_score( limb_score_grip ) * ( foe->get_arm_str() +
                            foe->get_dex() ) );
-    their_roll += dice( 3, foe->get_skill_level( skill_melee ) );
+    their_roll += dice( 3, round( foe->get_skill_level( skill_melee ) ) );
     their_roll *= foe->get_limb_score( limb_score_reaction );
 
     item_location it = foe->get_wielded_item();
