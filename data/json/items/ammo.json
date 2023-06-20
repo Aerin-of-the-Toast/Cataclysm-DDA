@@ -101,10 +101,12 @@
     "name": { "str": "match", "str_pl": "matches" },
     "symbol": "|",
     "description": "A small stick with a red part at the end.  Strike it against a matchbook to light it.",
+    "category": "tools",
     "volume": "4 ml",
     "weight": "1 mg",
     "color": "red",
     "flags": [ "TRADER_AVOID" ],
+    "material": [ "wood" ],
     "ammo_type": "match"
   },
   {
@@ -1381,6 +1383,24 @@
     "weight": "1 g",
     "phase": "gas",
     "ammo_type": "extinguishing_agent",
+    "count": 10
+  },
+  {
+    "type": "AMMO",
+    "id": "teargas_spray",
+    "category": "chems",
+    "price": 500,
+    "price_postapoc": 500,
+    "name": { "str_sp": "tear gas spray" },
+    "symbol": "%",
+    "color": "white",
+    "container": "bottle_plastic",
+    "sealed": false,
+    "description": "A noxious aerosolized irritant used to fend off attackers both human and bear alike.",
+    "volume": "250 ml",
+    "weight": "1 g",
+    "phase": "gas",
+    "ammo_type": "teargas_spray",
     "count": 10
   },
   {
