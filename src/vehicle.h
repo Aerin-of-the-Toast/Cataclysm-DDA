@@ -507,6 +507,9 @@ struct vehicle_part {
         /** door is open */
         bool open = false;
 
+        /** door is locked */
+        bool locked = false;
+
         /** direction the part is facing */
         units::angle direction = 0_degrees;
 
@@ -734,8 +737,8 @@ class vpart_display
  *   call `map::veh_at()`, and check vehicle type (`veh_null`
  *   means there's no vehicle there).
  * - Vehicle consists of parts (represented by vector). Parts have some
- *   constant info: see veh_type.h, `vpart_info` structure and
- *   vpart_list array -- that is accessible through `part_info()` method.
+ *   constant info: see veh_type.h, `vpart_info` structure that is accessible
+ *   through `vehicle_part::info()` method.
  *   The second part is variable info, see `vehicle_part` structure.
  * - Parts are mounted at some point relative to vehicle position (or starting part)
  *   (`0, 0` in mount coordinates). There can be more than one part at
@@ -797,6 +800,7 @@ class vehicle
         bool has_structural_part( const point &dp ) const;
         bool is_structural_part_removed() const;
         void open_or_close( int part_index, bool opening );
+        void lock_or_unlock( int part_index, bool locking );
         bool is_connected( const vehicle_part &to, const vehicle_part &from,
                            const vehicle_part &excluded ) const;
 
@@ -1004,9 +1008,6 @@ class vehicle
 
         // Engine backfire, making a loud noise
         void backfire( const vehicle_part &vp ) const;
-
-        // get vpart type info for part number (part at given vector index)
-        const vpart_info &part_info( int index, bool include_removed = false ) const;
 
         /**
          * @param dp The coordinate to mount at (in vehicle mount point coords)
@@ -1252,6 +1253,30 @@ class vehicle
          */
         int next_part_to_close( int p, bool outside = false ) const;
 
+        /**
+         *  Return the index of the next part to lock at part `p`'s location.
+         *
+         *  The next part to lock is the first closed, unlocked part in the list of
+         *  parts at part `p`'s coordinates with the lockable_door flag.
+         *
+         *  @param p part whose coordinates provide the location to check
+         *  @param outside if true, give parts that can be locked from outside only
+         *  @returns a part index or -1 if no part
+         */
+        int next_part_to_lock( int p, bool outside = false ) const;
+
+        /**
+         *  Return the index of the next part to unlock at part `p`'s location.
+         *
+         *  The next part to unlock is the first locked part in the list of
+         *  parts at part `p`'s coordinates with the lockable_door flag.
+         *
+         *  @param p part whose coordinates provide the location to check
+         *  @param outside if true, give parts that can be unlocked from outside only
+         *  @returns part index or -1 if no part
+         */
+        int next_part_to_unlock( int p, bool outside = false ) const;
+
         // returns indices of all parts in the given location slot
         std::vector<int> all_parts_at_location( const std::string &location ) const;
         // shifts an index to next available of that type for NPC activities
@@ -1259,10 +1284,6 @@ class vehicle
         // Given a part and a flag, returns the indices of all contiguously adjacent parts
         // with the same flag on the X and Y Axis
         std::vector<std::vector<int>> find_lines_of_parts( int part, const std::string &flag ) const;
-
-        // returns true if given flag is present for given part index
-        bool part_flag( int p, const std::string &f ) const;
-        bool part_flag( int p, vpart_bitflags f ) const;
 
         // Translate mount coordinates "p" using current pivot direction and anchor and return tile coordinates
         point coord_translate( const point &p ) const;
@@ -1887,10 +1908,13 @@ class vehicle
         std::list<item> use_charges( const vpart_position &vp, const itype_id &type, int &quantity,
                                      const std::function<bool( const item & )> &filter, bool in_tools = false );
 
-        // opens/closes doors or multipart doors
+        // opens/closes/locks doors or multipart doors
         void open( int part_index );
         void close( int part_index );
-
+        void lock( int part_index );
+        void unlock( int part_index );
+        // returns whether the door can be locked with an attached DOOR_LOCKING part.
+        bool part_has_lock( int part_index ) const;
         bool can_close( int part_index, Character &who );
 
         // @returns true if vehicle only has foldable parts
