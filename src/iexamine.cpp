@@ -3449,6 +3449,29 @@ void iexamine::fireplace( Character &you, const tripoint &examp )
     }
 }
 
+static void fvat_set_empty( const tripoint &pos )
+{
+    map &here = get_map();
+    furn_id furn = here.furn( pos );
+    if( furn == f_fvat_wood_empty || furn == f_fvat_wood_full ) {
+        here.furn_set( pos, f_fvat_wood_empty );
+    } else {
+        here.furn_set( pos, f_fvat_empty );
+    }
+}
+
+static void fvat_set_full( const tripoint &pos )
+{
+    map &here = get_map();
+    furn_id furn = here.furn( pos );
+    if( furn == f_fvat_wood_empty || furn == f_fvat_wood_full ) {
+        here.furn_set( pos, f_fvat_wood_full );
+    } else {
+        here.furn_set( pos, f_fvat_full );
+    }
+}
+
+
 void iexamine::fvat_empty( Character &you, const tripoint &examp )
 {
     itype_id brew_type;
@@ -3566,7 +3589,7 @@ void iexamine::fvat_empty( Character &you, const tripoint &examp )
     }
     if( vat_full || ferment ) {
         here.i_at( examp ).only_item().set_age( 0_turns );
-        here.furn_set( examp, f_fvat_full );
+        fvat_set_full( examp );
         if( vat_full ) {
             add_msg( _( "The vat is full, so you close the lid and start the fermenting cycle." ) );
         } else {
@@ -3581,7 +3604,7 @@ void iexamine::fvat_full( Character &you, const tripoint &examp )
     map_stack items_here = here.i_at( examp );
     if( items_here.empty() ) {
         debugmsg( "fvat_full was empty!" );
-        here.furn_set( examp, f_fvat_empty );
+        fvat_set_empty( examp );
         return;
     }
 
@@ -3594,7 +3617,7 @@ void iexamine::fvat_full( Character &you, const tripoint &examp )
     }
 
     if( items_here.empty() ) {
-        here.furn_set( examp, f_fvat_empty );
+        fvat_set_empty( examp );
         return;
     }
 
@@ -3643,7 +3666,7 @@ void iexamine::fvat_full( Character &you, const tripoint &examp )
 
     const std::string booze_name = brew_i.tname();
     if( liquid_handler::handle_liquid_from_ground( items_here.begin(), examp ) ) {
-        here.furn_set( examp, f_fvat_empty );
+        fvat_set_empty( examp );
         add_msg( _( "You squeeze the last drops of %s from the vat." ), booze_name );
     }
 }
@@ -4531,48 +4554,50 @@ void iexamine::sign( Character &you, const tripoint &examp )
     bool previous_signage_exists = !existing_signage.empty();
 
     // Display existing message, or lack thereof.
-    if( you.has_trait( trait_ILLITERATE ) ) {
-        popup( _( "You're illiterate, and can't read the message on the sign." ) );
-    } else if( previous_signage_exists ) {
-        popup( existing_signage );
-    } else {
-        you.add_msg_if_player( m_neutral, _( "Nothing legible on the sign." ) );
-    }
-
-    // Allow chance to modify message.
-    std::vector<tool_comp> tools;
-    std::vector<const item *> filter = you.crafting_inventory().items_with( []( const item & it ) {
-        return it.has_flag( flag_WRITE_MESSAGE ) && it.charges > 0;
-    } );
-    tools.reserve( filter.size() );
-    for( const item *writing_item : filter ) {
-        tools.emplace_back( writing_item->typeId(), 1 );
-    }
-
-    if( !tools.empty() ) {
-        // Different messages if the sign already has writing associated with it.
-        std::string query_message = previous_signage_exists ?
-                                    _( "Overwrite the existing message on the sign?" ) :
-                                    _( "Add a message to the sign?" );
-        std::string ignore_message = _( "You leave the sign alone." );
-        if( query_yn( query_message ) ) {
-            std::string signage = string_input_popup()
-                                  .title( _( "Write what?" ) )
-                                  .identifier( "signage" )
-                                  .query_string();
-            if( signage.empty() ) {
-                you.add_msg_if_player( m_neutral, ignore_message );
-            } else {
-                std::string spray_painted_message = previous_signage_exists ?
-                                                    _( "You overwrite the previous message on the sign with your graffiti." ) :
-                                                    _( "You graffiti a message onto the sign." );
-                here.set_signage( examp, signage );
-                you.add_msg_if_player( m_info, spray_painted_message );
-                you.mod_moves( - 20 * signage.length() );
-                you.consume_tools( tools, 1 );
-            }
+    if( here.furn( examp )->has_flag( ter_furn_flag::TFLAG_SIGN_ALWAYS ) || previous_signage_exists ) {
+        if( you.has_trait( trait_ILLITERATE ) ) {
+            popup( _( "You're illiterate, and can't read the message on the sign." ) );
+        } else if( previous_signage_exists ) {
+            popup( existing_signage );
         } else {
-            you.add_msg_if_player( m_neutral, ignore_message );
+            you.add_msg_if_player( m_neutral, _( "Nothing legible on the sign." ) );
+        }
+
+
+        // Allow chance to modify message.
+        std::vector<tool_comp> tools;
+        std::vector<const item *> filter = you.crafting_inventory().items_with( []( const item & it ) {
+            return it.has_flag( flag_WRITE_MESSAGE ) && it.charges > 0;
+        } );
+        tools.reserve( filter.size() );
+        for( const item *writing_item : filter ) {
+            tools.emplace_back( writing_item->typeId(), 1 );
+        }
+        if( !tools.empty() ) {
+            // Different messages if the sign already has writing associated with it.
+            std::string query_message = previous_signage_exists ?
+                                        _( "Overwrite the existing message on the sign?" ) :
+                                        _( "Add a message to the sign?" );
+            std::string ignore_message = _( "You leave the sign alone." );
+            if( query_yn( query_message ) ) {
+                std::string signage = string_input_popup()
+                                      .title( _( "Write what?" ) )
+                                      .identifier( "signage" )
+                                      .query_string();
+                if( signage.empty() ) {
+                    you.add_msg_if_player( m_neutral, ignore_message );
+                } else {
+                    std::string spray_painted_message = previous_signage_exists ?
+                                                        _( "You overwrite the previous message on the sign with your graffiti." ) :
+                                                        _( "You graffiti a message onto the sign." );
+                    here.set_signage( examp, signage );
+                    you.add_msg_if_player( m_info, spray_painted_message );
+                    you.mod_moves( - 20 * signage.length() );
+                    you.consume_tools( tools, 1 );
+                }
+            } else {
+                you.add_msg_if_player( m_neutral, ignore_message );
+            }
         }
     }
 }
@@ -5939,21 +5964,24 @@ static void smoker_load_food( Character &you, const tripoint &examp,
     units::volume vol = remaining_capacity;
     for( const drop_location &dloc : locs ) {
         item_location original = dloc.first;
+        original.overflow();
         item copy( *original );
-        copy.charges = clamp( copy.charges_per_volume( vol ), 1, dloc.second );
+        if( copy.count_by_charges() ) {
+            copy.charges = clamp( copy.charges_per_volume( vol ), 1, dloc.second );
+        }
 
         if( vol < copy.volume() ) {
-            add_msg( m_info, _( "The %s doesn't fit in the rack." ), copy.tname( copy.charges ) );
+            add_msg( m_info, _( "The %s doesn't fit in the rack." ), copy.tname( copy.count() ) );
             continue;
         }
 
         here.add_item( examp, copy );
         you.mod_moves( -you.item_handling_cost( copy ) );
-        add_msg( m_info, _( "You carefully place %1$d %2$s in the rack." ), copy.charges,
-                 copy.tname( copy.charges ) );
+        add_msg( m_info, _( "You carefully place %1$d %2$s in the rack." ), copy.count(),
+                 copy.tname( copy.count() ) );
 
         vol -= copy.volume();
-        if( original->charges == copy.charges ) {
+        if( !copy.count_by_charges() || original->charges == copy.charges ) {
             original.remove_item();
         } else {
             original->charges -= copy.charges;
@@ -6513,9 +6541,7 @@ void iexamine::workbench_internal( Character &you, const tripoint &examp,
 
     if( part ) {
         name = part->part().name();
-        vehicle_stack items_at_part = part->vehicle().get_items( part->part_index() );
-
-        for( item &it : items_at_part ) {
+        for( item &it : part->items() ) {
             if( it.is_craft() ) {
                 crafts.emplace_back( vehicle_cursor( part->vehicle(), part->part_index() ), &it );
             }

@@ -248,8 +248,10 @@ std::string enum_to_string<ter_furn_flag>( ter_furn_flag data )
         case ter_furn_flag::TFLAG_ALARMED: return "ALARMED";
         case ter_furn_flag::TFLAG_CHOCOLATE: return "CHOCOLATE";
         case ter_furn_flag::TFLAG_SIGN: return "SIGN";
+        case ter_furn_flag::TFLAG_SIGN_ALWAYS: return "SIGN_ALWAYS";
         case ter_furn_flag::TFLAG_DONT_REMOVE_ROTTEN: return "DONT_REMOVE_ROTTEN";
         case ter_furn_flag::TFLAG_BLOCKSDOOR: return "BLOCKSDOOR";
+        case ter_furn_flag::TFLAG_SMALL_HIDE: return "SMALL_HIDE";
         case ter_furn_flag::TFLAG_NO_SELF_CONNECT: return "NO_SELF_CONNECT";
         case ter_furn_flag::TFLAG_BURROWABLE: return "BURROWABLE";
         case ter_furn_flag::TFLAG_MURKY: return "MURKY";
@@ -1187,7 +1189,7 @@ furn_id f_null, f_clear,
         f_cattails, f_lotus, f_lilypad,
         f_safe_c, f_safe_l, f_safe_o,
         f_plant_seed, f_plant_seedling, f_plant_mature, f_plant_harvest,
-        f_fvat_empty, f_fvat_full,
+        f_fvat_empty, f_fvat_full, f_fvat_wood_empty, f_fvat_wood_full,
         f_wood_keg,
         f_standing_tank,
         f_egg_sackbw, f_egg_sackcs, f_egg_sackws, f_egg_sacke,
@@ -1291,6 +1293,8 @@ void set_furn_ids()
     f_plant_harvest = furn_id( "f_plant_harvest" );
     f_fvat_empty = furn_id( "f_fvat_empty" );
     f_fvat_full = furn_id( "f_fvat_full" );
+    f_fvat_wood_empty = furn_id( "f_fvat_wood_empty" );
+    f_fvat_wood_full = furn_id( "f_fvat_wood_full" );
     f_wood_keg = furn_id( "f_wood_keg" );
     f_standing_tank = furn_id( "f_standing_tank" );
     f_egg_sackbw = furn_id( "f_egg_sackbw" );

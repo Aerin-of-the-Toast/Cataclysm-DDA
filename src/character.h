@@ -314,6 +314,21 @@ struct aim_type {
     }
 };
 
+struct parallax_cache {
+    int parallax_with_zoom;
+    int parallax_without_zoom;
+};
+
+struct aim_mods_cache {
+    float aim_speed_skill_mod;
+    float aim_speed_dex_mod;
+    float aim_speed_mod;
+    int limit;
+    double aim_factor_from_volume;
+    double aim_factor_from_length;
+    std::optional<std::reference_wrapper<parallax_cache>> parallaxes;
+};
+
 struct special_attack {
     std::string text;
     damage_instance damage;
@@ -370,6 +385,24 @@ enum class book_mastery {
     CANT_UNDERSTAND, // does not have enough skill to read
     LEARNING,
     MASTERED // can no longer increase skill by reading
+};
+
+enum class read_condition_result {
+    SUCCESS = 0,
+    NOT_BOOK = 1 << 0,
+    CANT_UNDERSTAND = 1 << 1,
+    MASTERED = 1 << 2,
+    DRIVING = 1 << 3,
+    ILLITERATE = 1 << 4,
+    NEED_GLASSES = 1 << 5,
+    TOO_DARK = 1 << 6,
+    MORALE_LOW = 1 << 7,
+    BLIND = 1 << 8
+};
+
+template<>
+struct enum_traits<read_condition_result> {
+    static constexpr bool is_flag_enum = true;
 };
 
 /** @relates ret_val */
@@ -672,10 +705,12 @@ class Character : public Creature, public visitable
         std::vector<aim_type> get_aim_types( const item &gun ) const;
         int point_shooting_limit( const item &gun ) const;
         double fastest_aiming_method_speed( const item &gun, double recoil,
-                                            Target_attributes target_attributes = Target_attributes() ) const;
+                                            Target_attributes target_attributes = Target_attributes(),
+                                            std::optional<std::reference_wrapper<parallax_cache>> parallax_cache = std::nullopt ) const;
         int most_accurate_aiming_method_limit( const item &gun ) const;
         double aim_factor_from_volume( const item &gun ) const;
         double aim_factor_from_length( const item &gun ) const;
+        aim_mods_cache gen_aim_mods_cache( const item &gun )const;
 
         // Get the value of the specified character modifier.
         // (some modifiers require a skill_id, ex: aim_speed_skill_mod)
@@ -689,9 +724,12 @@ class Character : public Creature, public visitable
         bool has_gun_for_ammo( const ammotype &at ) const;
         bool has_magazine_for_ammo( const ammotype &at ) const;
 
-        /* Calculate aim improvement per move spent aiming at a given @ref recoil */
+        /* Calculate aim improvement per move spent aiming at a given @ref recoil
+        * Use a struct to avoid repeatedly calculate some modifiers that are actually persistent for aiming UI drawing.
+        */
         double aim_per_move( const item &gun, double recoil,
-                             Target_attributes target_attributes = Target_attributes() ) const;
+                             Target_attributes target_attributes = Target_attributes(),
+                             std::optional<std::reference_wrapper<const aim_mods_cache>> aim_cache = std::nullopt ) const;
 
         int get_dodges_left() const;
         void set_dodges_left( int dodges );
@@ -810,7 +848,7 @@ class Character : public Creature, public visitable
         /** Kills the player if too hungry, stimmed up etc., forces tired player to sleep and prints warnings. */
         void check_needs_extremes();
         /** Handles the chance to be infected by random diseases */
-        void get_sick();
+        void get_sick( bool is_flu = false );
         /** Returns if the player has hibernation mutation and is asleep and well fed */
         bool is_hibernating() const;
         /** Maintains body temperature */
@@ -2304,6 +2342,13 @@ class Character : public Creature, public visitable
         time_duration time_to_read( const item &book, const Character &reader,
                                     const Character *learner = nullptr ) const;
 
+        /**
+         * Helper function for get_book_reader
+         *
+         * @param book The book being read
+         */
+        read_condition_result check_read_condition( const item &book ) const;
+
         /** Calls Creature::normalize()
          *  nulls out the player's weapon
          *  Should only be called through player::normalize(), not on it's own!
@@ -2904,6 +2949,8 @@ class Character : public Creature, public visitable
          * with ranged weapons, e.g. with infrared vision.
          */
         std::vector<Creature *> get_targetable_creatures( int range, bool melee ) const;
+        /** Returns the mutation visibility threshold for the observer ( *this ) */
+        int get_mutation_visibility_cap( const Character *observed ) const;
         /** Returns an enumeration of visible mutations with colors */
         std::string visible_mutations( int visibility_cap ) const;
 
@@ -3103,7 +3150,7 @@ class Character : public Creature, public visitable
          * above 4.0 means these activities cannot be performed.
          * takes pos as a parameter so that remote spots can be judged
          * if they will potentially have enough light when player gets there */
-        float fine_detail_vision_mod( const tripoint &p = tripoint_zero ) const;
+        float fine_detail_vision_mod( const tripoint &p = tripoint_min ) const;
 
         // ---- CRAFTING ----
         void make_craft_with_command( const recipe_id &id_to_make, int batch_size, bool is_long,
@@ -3322,6 +3369,8 @@ class Character : public Creature, public visitable
         float leak_level = 0.0f;
         /** Signify that leak_level needs refreshing. Set to true on inventory change. */
         bool leak_level_dirty = true;
+        // Cache if current bionic layout has certain json flag. Refreshed upon bionics add/remove, activation/deactivation.
+        mutable std::map<const json_character_flag, bool> bio_flag_cache;
     public:
         float get_leak_level() const;
         /** Iterate through the character inventory to get its leak level */
@@ -3520,8 +3569,6 @@ class Character : public Creature, public visitable
 
         // Our weariness level last turn, so we know when we transition
         int old_weary_level = 0;
-        // Z-level on the last turn (used for edge-case "fine_detail_vision_mod" NPCs function override)
-        int last_pc_zlev = 0;
 
         trap_map known_traps;
         mutable std::map<std::string, double> cached_info;

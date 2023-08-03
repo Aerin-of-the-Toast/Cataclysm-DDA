@@ -117,6 +117,7 @@ static const activity_id ACT_HAIRCUT( "ACT_HAIRCUT" );
 static const activity_id ACT_HARVEST( "ACT_HARVEST" );
 static const activity_id ACT_HOTWIRE_CAR( "ACT_HOTWIRE_CAR" );
 static const activity_id ACT_INSERT_ITEM( "ACT_INSERT_ITEM" );
+static const activity_id ACT_INVOKE_ITEM( "ACT_INVOKE_ITEM" );
 static const activity_id ACT_LOCKPICK( "ACT_LOCKPICK" );
 static const activity_id ACT_LONGSALVAGE( "ACT_LONGSALVAGE" );
 static const activity_id ACT_MEDITATE( "ACT_MEDITATE" );
@@ -783,10 +784,6 @@ void hacking_activity_actor::finish( player_activity &act, Character &who )
             get_event_bus().send<event_type::triggers_alarm>( who.getID() );
             sounds::sound( who.pos(), 60, sounds::sound_t::music, _( "an alarm sound!" ), true, "environment",
                            "alarm" );
-            if( examp.z > 0 && !get_timed_events().queued( timed_event_type::WANTED ) ) {
-                get_timed_events().add( timed_event_type::WANTED, calendar::turn + 30_minutes, 0,
-                                        who.get_location() );
-            }
             break;
         case hack_result::NOTHING:
             who.add_msg_if_player( _( "You fail the hack, but no alarms are triggered." ) );
@@ -1585,27 +1582,21 @@ void read_activity_actor::do_turn( player_activity &act, Character &who )
                  book_type::martial_art : book_type::normal;
     }
 
-    if( who.is_avatar() ) {
-        // he following check doesn't work for NPCs
-        // because it is counted for player's submap and z-level only
-        if( who.fine_detail_vision_mod() > 4 ) {
-            // It got too dark during the process of reading, bail out.
-            act.set_to_null();
-            who.add_msg_if_player( m_bad, _( "It's too dark to read!" ) );
-            return;
-        }
+    if( who.fine_detail_vision_mod() > 4 ) {
+        // It got too dark during the process of reading, bail out.
+        act.set_to_null();
+        who.add_msg_if_player( m_bad, _( "It's too dark to read!" ) );
+        return;
+    }
 
-        if( bktype.value() == book_type::martial_art && one_in( 3 ) ) {
-            who.mod_stamina( -1 );
-        }
+    if( bktype.value() == book_type::martial_art && one_in( 3 ) ) {
+        who.mod_stamina( -1 );
+    }
 
-        // do not spam the message log
-        if( calendar::once_every( 5_minutes ) ) {
-            add_msg_debug( debugmode::DF_ACT_READ, "reading time = %s",
-                           to_string_writable( time_duration::from_moves( act.moves_left ) ) );
-        }
-    } else {
-        who.moves = 0;
+    // do not spam the message log
+    if( calendar::once_every( 5_minutes ) ) {
+        add_msg_debug( debugmode::DF_ACT_READ, "%s reading time = %s",
+                       who.name, to_string_writable( time_duration::from_moves( act.moves_left ) ) );
     }
 
     if( using_ereader && !ereader ) {
@@ -2574,10 +2565,6 @@ void lockpick_activity_actor::finish( player_activity &act, Character &who )
     if( !perfect && ter_type == t_door_locked_alarm && ( lock_roll + dice( 1, 30 ) ) > pick_roll ) {
         sounds::sound( who.pos(), 40, sounds::sound_t::alarm, _( "an alarm sound!" ), true, "environment",
                        "alarm" );
-        if( !get_timed_events().queued( timed_event_type::WANTED ) ) {
-            get_timed_events().add( timed_event_type::WANTED, calendar::turn + 30_minutes, 0,
-                                    who.get_location() );
-        }
     }
 
     if( destroy && lockpick.has_value() ) {
@@ -3649,7 +3636,11 @@ bool workout_activity_actor::query_keep_training( player_activity &act, Characte
         default:
             query_int( length, _( "Train for how long (minutes): " ) );
             elapsed += act.moves_total - act.moves_left;
-            act.moves_total = to_moves<int>( length * 1_minutes );
+            duration = 0_minutes;
+            if( length > 0 ) {
+                duration = length * 1_minutes;
+            }
+            act.moves_total = to_moves<int>( duration );
             act.moves_left = act.moves_total;
             return true;
     }
@@ -4187,7 +4178,8 @@ void insert_item_activity_actor::finish( player_activity &act, Character &who )
                 int result = holster->fill_with( it, charges,
                                                  /*unseal_pockets=*/true,
                                                  /*allow_sealed=*/true,
-                                                 /*ignore_settings*/true );
+                                                 /*ignore_settings*/true,
+                                                 /*into_bottom*/true );
                 success = result > 0;
 
                 if( success ) {
@@ -5051,18 +5043,14 @@ void reel_cable_activity_actor::start( player_activity &act, Character & )
 
 void reel_cable_activity_actor::finish( player_activity &act, Character &who )
 {
-    cable->active = false;
-    cable->charges = cable->link->max_length;
-    cable->link.reset();
-    if( parent_item ) {
-        parent_item->contents_linked = false;
-        who.add_msg_if_player( m_info, string_format( _( "You gather the cable up with the %s." ),
-                               parent_item->label( 1 ) ) );
-    } else {
-        who.add_msg_if_player( m_info, string_format( _( "You reel in the %s and wind it up." ),
-                               cable->label( 1 ) ) );
-    }
-    if( cable->has_flag( flag_AUTO_DELETE_CABLE ) ) {
+    cable->link->length = 0;
+    cable->link->s_state = link_state::no_link;
+    cable->link->t_state = link_state::no_link;
+    cable->reset_link( &who, -2 );
+    who.add_msg_if_player( m_info,
+                           string_format( cable->has_flag( flag_CABLE_SPOOL ) ? _( "You reel in the %s and wind it up." ) :
+                                          _( "You reel in the %s's cable and wind it up." ), cable->type_name() ) );
+    if( cable->has_flag( flag_NO_DROP ) ) {
         cable.remove_item();
     }
     act.set_to_null();
@@ -5073,17 +5061,15 @@ void reel_cable_activity_actor::serialize( JsonOut &jsout ) const
     jsout.start_object();
     jsout.member( "moves_total", moves_total );
     jsout.member( "cable", cable );
-    jsout.member( "parent_item", parent_item );
     jsout.end_object();
 }
 
 std::unique_ptr<activity_actor> reel_cable_activity_actor::deserialize( JsonValue &jsin )
 {
-    reel_cable_activity_actor actor( 0, {}, {} );
+    reel_cable_activity_actor actor( 0, {} );
     JsonObject data = jsin.get_object();
     data.read( "moves_total", actor.moves_total );
     data.read( "cable", actor.cable );
-    data.read( "parent_item", actor.parent_item );
 
     return actor.clone();
 }
@@ -5356,10 +5342,6 @@ void prying_activity_actor::handle_prying( Character &who )
         get_event_bus().send<event_type::triggers_alarm>( who.getID() );
         sounds::sound( who.pos(), 40, sounds::sound_t::alarm, _( "an alarm sound!" ), true, "environment",
                        "alarm" );
-        if( !get_timed_events().queued( timed_event_type::WANTED ) ) {
-            get_timed_events().add( timed_event_type::WANTED, calendar::turn + 30_minutes, 0,
-                                    who.get_location() );
-        }
     }
 
     if( !data->message().empty() ) {
@@ -5679,6 +5661,40 @@ std::unique_ptr<activity_actor> wear_activity_actor::deserialize( JsonValue &jsi
     data.read( "target_items", actor.target_items );
     data.read( "quantities", actor.quantities );
     data.read( "handler", actor.handler );
+
+    return actor.clone();
+}
+
+void invoke_item_activity_actor::do_turn( player_activity &, Character &who )
+{
+    if( method.empty() ) {
+        who.cancel_activity();
+        who.invoke_item( item.get_item() );
+        return;
+    }
+    std::string _method = method;
+    who.cancel_activity();
+    who.invoke_item( item.get_item(), _method );
+}
+
+void invoke_item_activity_actor::serialize( JsonOut &jsout ) const
+{
+    jsout.start_object();
+
+    jsout.member( "item", item );
+    jsout.member( "method", method );
+
+    jsout.end_object();
+}
+
+std::unique_ptr<activity_actor> invoke_item_activity_actor::deserialize( JsonValue &jsin )
+{
+    invoke_item_activity_actor actor( {}, {} );
+
+    JsonObject data = jsin.get_object();
+
+    data.read( "item", actor.item );
+    data.read( "method", actor.method );
 
     return actor.clone();
 }
@@ -6509,7 +6525,8 @@ static void move_item( Character &you, item &it, const int quantity, const tripo
         put_into_vehicle_or_drop( you, item_drop_reason::deliberate, { it }, dest );
         // Remove from map or vehicle.
         if( src_veh ) {
-            src_veh->remove_item( src_part, &it );
+            vehicle_part &vp_src = src_veh->part( src_part );
+            src_veh->remove_item( vp_src, &it );
         } else {
             here.i_rem( src, &it );
         }
@@ -6518,7 +6535,8 @@ static void move_item( Character &you, item &it, const int quantity, const tripo
     // If we didn't pick up a whole stack, put the remainder back where it came from.
     if( leftovers.charges > 0 ) {
         if( src_veh ) {
-            if( !src_veh->add_item( src_part, leftovers ) ) {
+            vehicle_part &vp_src = src_veh->part( src_part );
+            if( !src_veh->add_item( vp_src, leftovers ) ) {
                 debugmsg( "SortLoot: Source vehicle failed to receive leftover charges." );
             }
         } else {
@@ -6616,10 +6634,8 @@ void unload_loot_activity_actor::do_turn( player_activity &act, Character &you )
             }
 
             //nothing to sort?
-            const std::optional<vpart_reference> vp = here.veh_at( src_loc ).part_with_feature( "CARGO",
-                    false );
-            if( ( !vp || vp->vehicle().get_items( vp->part_index() ).empty() )
-                && here.i_at( src_loc ).empty() ) {
+            const std::optional<vpart_reference> ovp = here.veh_at( src_loc ).cargo();
+            if( ( !ovp || ovp->items().empty() ) && here.i_at( src_loc ).empty() ) {
                 continue;
             }
 
@@ -6688,11 +6704,10 @@ void unload_loot_activity_actor::do_turn( player_activity &act, Character &you )
         //Check source for cargo part
         //map_stack and vehicle_stack are different types but inherit from item_stack
         // TODO: use one for loop
-        if( const std::optional<vpart_reference> vp = here.veh_at( src_loc ).part_with_feature( "CARGO",
-                false ) ) {
-            src_veh = &vp->vehicle();
-            src_part = vp->part_index();
-            for( item &it : src_veh->get_items( src_part ) ) {
+        if( const std::optional<vpart_reference> ovp = here.veh_at( src_loc ).cargo() ) {
+            src_veh = &ovp->vehicle();
+            src_part = ovp->part_index();
+            for( item &it : ovp->items() ) {
                 items.emplace_back( &it, true );
             }
         } else {
@@ -6761,7 +6776,8 @@ void unload_loot_activity_actor::do_turn( player_activity &act, Character &you )
                                 if( it->first->type->magazine->linkage ) {
                                     item link( *it->first->type->magazine->linkage, calendar::turn, contained->count() );
                                     if( this_veh != nullptr ) {
-                                        this_veh->add_item( this_part, link );
+                                        vehicle_part &vp_this = this_veh->part( this_part );
+                                        this_veh->add_item( vp_this, link );
                                     } else {
                                         here.add_item_or_charges( src_loc, link );
                                     }
@@ -6772,7 +6788,8 @@ void unload_loot_activity_actor::do_turn( player_activity &act, Character &you )
 
                             if( it->first->has_flag( flag_MAG_DESTROY ) && it->first->ammo_remaining() == 0 ) {
                                 if( this_veh != nullptr ) {
-                                    this_veh->remove_item( this_part, it->first );
+                                    vehicle_part &vp_this = this_veh->part( this_part );
+                                    this_veh->remove_item( vp_this, it->first );
                                 } else {
                                     here.i_rem( src_loc, it->first );
                                 }
@@ -6879,8 +6896,8 @@ bool vehicle_folding_activity_actor::fold_vehicle( Character &p, bool check_only
 
     // Drop cargo to ground
     // TODO: make cargo shuffling add time to activity
-    for( const vpart_reference &vp : veh.get_any_parts( "CARGO" ) ) {
-        vehicle_stack cargo = veh.get_items( vp.part_index() );
+    for( const vpart_reference &vpr : veh.get_any_parts( VPFLAG_CARGO ) ) {
+        vehicle_stack cargo = vpr.items();
         for( const item &elem : cargo ) {
             here.add_item_or_charges( veh.pos_bub(), elem );
         }
@@ -7199,6 +7216,7 @@ deserialize_functions = {
     { ACT_HARVEST, &harvest_activity_actor::deserialize},
     { ACT_HOTWIRE_CAR, &hotwire_car_activity_actor::deserialize },
     { ACT_INSERT_ITEM, &insert_item_activity_actor::deserialize },
+    { ACT_INVOKE_ITEM, &invoke_item_activity_actor::deserialize },
     { ACT_LOCKPICK, &lockpick_activity_actor::deserialize },
     { ACT_LONGSALVAGE, &longsalvage_activity_actor::deserialize },
     { ACT_MEDITATE, &meditate_activity_actor::deserialize },

@@ -137,7 +137,7 @@ player_activity veh_interact::serialize_activity()
     }
 
     avatar &player_character = get_avatar();
-    int time = 1000;
+    time_duration time = 0_seconds;
     switch( sel_cmd ) {
         case 'i':
             time = vp->install_time( player_character );
@@ -158,9 +158,9 @@ player_activity veh_interact::serialize_activity()
             break;
     }
     if( player_character.has_trait( trait_DEBUG_HS ) ) {
-        time = 1;
+        time = 1_seconds;
     }
-    player_activity res( ACT_VEHICLE, time, static_cast<int>( sel_cmd ) );
+    player_activity res( ACT_VEHICLE, to_moves<int>( time ), static_cast<int>( sel_cmd ) );
 
     // if we're working on an existing part, use that part as the reference point
     // otherwise (e.g. installing a new frame), just use part 0
@@ -344,14 +344,14 @@ void veh_interact::allocate_windows()
 }
 
 bool veh_interact::format_reqs( std::string &msg, const requirement_data &reqs,
-                                const std::map<skill_id, int> &skills, int moves ) const
+                                const std::map<skill_id, int> &skills, time_duration time ) const
 {
     Character &player_character = get_player_character();
     const inventory &inv = player_character.crafting_inventory();
     bool ok = reqs.can_make_with_inventory( inv, is_crafting_component );
 
     msg += _( "<color_white>Time required:</color>\n" );
-    msg += "> " + to_string_approx( time_duration::from_moves( moves ) ) + "\n";
+    msg += "> " + to_string_approx( time ) + "\n";
 
     msg += _( "<color_white>Skills required:</color>\n" );
     for( const auto &e : skills ) {
@@ -762,19 +762,6 @@ task_reason veh_interact::cant_do( char mode )
     return task_reason::CAN_DO;
 }
 
-bool veh_interact::is_drive_conflict()
-{
-    std::string conflict_type;
-    bool has_conflict = veh->has_engine_conflict( sel_vpart_info, conflict_type );
-
-    if( has_conflict ) {
-        //~ %1$s is fuel_type
-        msg = string_format( _( "Only one %1$s powered engine can be installed." ),
-                             conflict_type );
-    }
-    return has_conflict;
-}
-
 bool veh_interact::can_self_jack()
 {
     int lvl = jack_quality( *veh );
@@ -800,7 +787,9 @@ bool veh_interact::update_part_requirements()
         return false;
     }
 
-    if( is_drive_conflict() ) {
+    if( const std::optional<std::string> conflict = veh->has_engine_conflict( *sel_vpart_info ) ) {
+        //~ %1$s is fuel_type
+        msg = string_format( _( "Only one %1$s powered engine can be installed." ), conflict.value() );
         return false;
     }
     if( veh->has_part( "NO_MODIFY_VEHICLE" ) && !sel_vpart_info->has_flag( "SIMPLE_PART" ) ) {
@@ -1768,7 +1757,7 @@ bool veh_interact::can_remove_part( int idx, const Character &you )
         nmsg += string_format( _( "<color_white>Removing the %1$s may yield:</color>\n> %2$s\n" ),
                                sel_vehicle_part->name(), enumerate_as_string( removed_names ) );
     } else {
-        item result_of_removal = sel_vehicle_part->properties_to_item();
+        item result_of_removal = veh->part_to_item( *sel_vehicle_part );
         nmsg += string_format(
                     _( "<color_white>Removing the %1$s will yield:</color>\n> %2$s\n" ),
                     sel_vehicle_part->name(), result_of_removal.display_name() );
@@ -2483,10 +2472,10 @@ void veh_interact::display_stats() const
 
     units::volume total_cargo = 0_ml;
     units::volume free_cargo = 0_ml;
-    for( const vpart_reference &vp : veh->get_any_parts( "CARGO" ) ) {
-        const size_t p = vp.part_index();
-        total_cargo += veh->max_volume( p );
-        free_cargo += veh->free_volume( p );
+    for( const vpart_reference &vpr : veh->get_any_parts( VPFLAG_CARGO ) ) {
+        const vehicle_stack vs = vpr.items();
+        total_cargo += vs.max_volume();
+        free_cargo += vs.free_volume();
     }
 
     const int second_column = 33 + ( extraw / 4 );
@@ -3300,14 +3289,9 @@ void veh_interact::complete_vehicle( Character &you )
             std::list<item> resulting_items;
 
             // First we get all the contents of the part
-            vehicle_stack contents = veh.get_items( vp_index );
+            vehicle_stack contents = veh.get_items( vp );
             resulting_items.insert( resulting_items.end(), contents.begin(), contents.end() );
             contents.clear();
-
-            // Power cables must remove parts from the target vehicle, too.
-            if( vpi.has_flag( "POWER_TRANSFER" ) ) {
-                veh.remove_remote_part( vp );
-            }
 
             if( broken ) {
                 you.add_msg_if_player( _( "You remove the broken %1$s from the %2$s." ), vp.name(), veh.name );
@@ -3319,7 +3303,7 @@ void veh_interact::complete_vehicle( Character &you )
             }
 
             if( wall_wire_removal ) {
-                vp.properties_to_item(); // what's going on here? this line isn't doing anything...
+                veh.part_to_item( vp ); // what's going on here? this line isn't doing anything...
             } else if( vpi.has_flag( "TOW_CABLE" ) ) {
                 veh.invalidate_towing( true, &you );
             } else if( broken ) {
@@ -3330,7 +3314,7 @@ void veh_interact::complete_vehicle( Character &you )
                     item_group::ItemList pieces = vp.pieces_for_broken_part();
                     resulting_items.insert( resulting_items.end(), pieces.begin(), pieces.end() );
                 } else {
-                    resulting_items.push_back( vp.properties_to_item() );
+                    resulting_items.push_back( veh.part_to_item( vp ) );
                 }
                 for( const std::pair<const skill_id, int> &sk : vpi.install_skills ) {
                     // removal is half as educational as installation
@@ -3338,9 +3322,14 @@ void veh_interact::complete_vehicle( Character &you )
                 }
             }
 
+            // Power cables must remove parts from the target vehicle, too.
+            if( vpi.has_flag( "POWER_TRANSFER" ) ) {
+                veh.remove_remote_part( vp );
+            }
+
             // Remove any leftover power cords from the appliance
             if( appliance_removal && veh.part_count() >= 2 ) {
-                veh.shed_loose_parts();
+                veh.shed_loose_parts( trinary::ALL );
                 veh.part_removal_cleanup();
                 //always stop after removing an appliance
                 you.activity.set_to_null();
