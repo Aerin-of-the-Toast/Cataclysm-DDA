@@ -51,7 +51,7 @@ struct shopkeeper_item_group {
     item_group_id id = item_group_id( "EMPTY_GROUP" );
     int trust = 0;
     bool strict = false;
-    std::string refusal;
+    translation refusal;
     std::function<bool( dialogue & )> condition;
 
     // Rigid shopkeeper groups will be processed a single time. Default groups are not rigid, and will be processed until the shopkeeper has no more room or remaining value to populate goods with.
@@ -80,6 +80,11 @@ class npc_class
         distribution bonus_dex;
         distribution bonus_int;
         distribution bonus_per;
+
+        distribution bonus_aggression;
+        distribution bonus_bravery;
+        distribution bonus_collector;
+        distribution bonus_altruism;
 
         std::map<skill_id, distribution> skills;
         // Just for finalization
@@ -120,6 +125,11 @@ class npc_class
         int roll_intelligence() const;
         int roll_perception() const;
 
+        int roll_aggression() const;
+        int roll_bravery() const;
+        int roll_collector() const;
+        int roll_altruism() const;
+
         int roll_skill( const skill_id & ) const;
 
         const std::vector<shopkeeper_item_group> &get_shopkeeper_items() const;
@@ -127,6 +137,8 @@ class npc_class
         const shopkeeper_blacklist &get_shopkeeper_blacklist() const;
         const time_duration &get_shop_restock_interval() const;
         faction_price_rule const *get_price_rules( item const &it, npc const &guy ) const;
+
+        bool is_common() const;
 
         void load( const JsonObject &jo, std::string_view src );
 

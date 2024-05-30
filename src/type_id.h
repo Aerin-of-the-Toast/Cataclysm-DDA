@@ -23,6 +23,9 @@ struct ammo_effect;
 using ammo_effect_id = int_id<ammo_effect>;
 using ammo_effect_str_id = string_id<ammo_effect>;
 
+struct attack_vector;
+using attack_vector_id = string_id<attack_vector>;
+
 struct bionic_data;
 using bionic_id = string_id<bionic_data>;
 
@@ -150,6 +153,10 @@ using mod_id = string_id<MOD_INFORMATION>;
 
 struct mon_flag;
 using mon_flag_id = int_id<mon_flag>;
+// As of 1-1-24 there are 118 flags in the vanilla game.
+// Additional space is added for expansion, up to the next word size.
+// Note: it is safe to use flags larger than this, it will just be slower.
+using mon_flag_id_set = int_id_set<mon_flag, 64 * 3>;
 using mon_flag_str_id = string_id<mon_flag>;
 
 class monfaction;

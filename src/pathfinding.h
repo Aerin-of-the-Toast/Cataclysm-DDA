@@ -2,7 +2,7 @@
 #ifndef CATA_SRC_PATHFINDING_H
 #define CATA_SRC_PATHFINDING_H
 
-#include "coordinates.h"
+#include "coords_fwd.h"
 #include "game_constants.h"
 #include "mdarray.h"
 
@@ -44,6 +44,7 @@ struct pathfinding_cache {
     pathfinding_cache();
 
     bool dirty = false;
+    std::unordered_set<point> dirty_points;
 
     cata::mdarray<pf_special, point_bub_ms> special;
 };

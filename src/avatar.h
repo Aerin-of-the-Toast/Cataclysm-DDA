@@ -2,25 +2,30 @@
 #ifndef CATA_SRC_AVATAR_H
 #define CATA_SRC_AVATAR_H
 
-#include <cstddef>
-#include <iosfwd>
+#include <array>
 #include <list>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
+#include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "bodypart.h"
 #include "calendar.h"
 #include "character.h"
-#include "coordinates.h"
+#include "character_id.h"
+#include "coords_fwd.h"
 #include "enums.h"
 #include "game_constants.h"
+#include "item.h"
 #include "magic_teleporter_list.h"
 #include "mdarray.h"
-#include "memory_fast.h"
 #include "point.h"
 #include "type_id.h"
+#include "units.h"
 
 class advanced_inv_area;
 class advanced_inv_listitem;
@@ -28,30 +33,27 @@ class advanced_inventory_pane;
 class cata_path;
 class diary;
 class faction;
-class item;
 class item_location;
 class JsonObject;
 class JsonOut;
+class map_memory;
+class memorized_tile;
 class mission;
 class monster;
 class nc_color;
 class npc;
 class talker;
 struct bionic;
+struct mtype;
 
 namespace catacurses
 {
 class window;
 } // namespace catacurses
-enum class character_type : int;
-class map_memory;
-class memorized_tile;
-
 namespace debug_menu
 {
 class mission_debug;
 }  // namespace debug_menu
-struct mtype;
 enum class pool_type;
 
 // Monster visible in different directions (safe mode & compass)
@@ -108,7 +110,6 @@ class avatar : public Character
         bool load_template( const std::string &template_name, pool_type & );
         void save_template( const std::string &name, pool_type );
         void character_to_template( const std::string &name );
-        void add_default_background();
 
         bool is_avatar() const override {
             return true;
@@ -192,6 +193,10 @@ class avatar : public Character
          * Check @ref mission::has_failed to see which case it is.
          */
         void on_mission_finished( mission &cur_mission );
+        /**
+         * Returns true if character has the mission in their active missions list.
+         */
+        bool has_mission_id( const mission_type_id &miss_id );
 
         void remove_active_mission( mission &cur_mission );
 
@@ -269,13 +274,18 @@ class avatar : public Character
         bionic *bionic_by_invlet( int ch );
 
         faction *get_faction() const override;
+        bool is_ally( const Character &p ) const override;
+        bool is_obeying( const Character &p ) const override;
+
         // Set in npc::talk_to_you for use in further NPC interactions
         bool dialogue_by_radio = false;
         // Preferred aim mode - ranged.cpp aim mode defaults to this if possible
         std::string preferred_aiming_mode;
 
         // checks if the point is blocked based on characters current aiming state
+        // TODO Remove untyped overload
         bool cant_see( const tripoint &p );
+        bool cant_see( const tripoint_bub_ms &p );
 
         // rebuilds the full aim cache for the character if it is dirty
         void rebuild_aim_cache();
@@ -301,12 +311,17 @@ class avatar : public Character
         bool wield( item &target ) override;
         bool wield( item &target, int obtain_cost );
 
+        item::reload_option select_ammo( const item_location &base, bool prompt = false,
+                                         bool empty = true ) override;
+
         /** gets the inventory from the avatar that is interactible via advanced inventory management */
         std::vector<advanced_inv_listitem> get_AIM_inventory( const advanced_inventory_pane &pane,
                 advanced_inv_area &square );
 
         using Character::invoke_item;
+        // TODO: Get rid of untyped overload
         bool invoke_item( item *, const tripoint &pt, int pre_obtain_moves ) override;
+        bool invoke_item( item *, const tripoint_bub_ms &pt, int pre_obtain_moves ) override;
         bool invoke_item( item * ) override;
         bool invoke_item( item *, const std::string &, const tripoint &pt,
                           int pre_obtain_moves = -1 ) override;
@@ -347,6 +362,7 @@ class avatar : public Character
         void update_cardio_acc() override;
         void add_spent_calories( int cal ) override;
         void add_gained_calories( int cal ) override;
+        int get_daily_calories( unsigned days_ago, std::string const &type ) const;
         void log_activity_level( float level ) override;
         std::string total_daily_calories_string() const;
         //set 0-3 random hobbies, with 1 and 2 being twice as likely as 0 and 3

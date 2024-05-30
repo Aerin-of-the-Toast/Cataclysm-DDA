@@ -358,6 +358,9 @@ void talk_function::goto_location( npc &p )
         if( elem == p.global_omt_location() ) {
             continue;
         }
+        if( !overmap_buffer.seen( elem ) ) {
+            continue;
+        }
         std::optional<basecamp *> camp = overmap_buffer.find_camp( elem.xy() );
         if( !camp ) {
             continue;
@@ -371,16 +374,21 @@ void talk_function::goto_location( npc &p )
                                  iter->camp_name(), iter->camp_omt_pos().to_string() );
     }
     selection_menu.addentry( i++, true, MENU_AUTOASSIGN, _( "My current location" ) );
+    if( !player_character.omt_path.empty() ) {
+        selection_menu.addentry( i++, true, MENU_AUTOASSIGN, _( "My destination" ) );
+    }
     selection_menu.addentry( i, true, MENU_AUTOASSIGN, _( "Cancel" ) );
     selection_menu.selected = 0;
     selection_menu.query();
     int index = selection_menu.ret;
-    if( index < 0 || index > static_cast<int>( camps.size() + 1 ) ||
-        index == static_cast<int>( camps.size() + 1 ) ) {
+    if( index < 0 || index >= i ) {
         return;
     }
     if( index == static_cast<int>( camps.size() ) ) {
         destination = player_character.global_omt_location();
+    } else if( index == static_cast<int>( camps.size() ) + 1 ) {
+        // This looks nuts, but omt_path is emplaced in reverse order. So the front of the vector is our destination
+        destination = player_character.omt_path.front();
     } else {
         const basecamp *selected_camp = camps[index];
         destination = selected_camp->camp_omt_pos();
@@ -500,10 +508,9 @@ void talk_function::insult_combat( npc &p )
     p.set_attitude( NPCATT_KILL );
 }
 
-void talk_function::bionic_install( npc &p )
+static void bionic_install_common( npc &p, Character &patron, Character &patient )
 {
-    avatar &player_character = get_avatar();
-    item_location bionic = game_menus::inv::install_bionic( p, player_character, true );
+    item_location bionic = game_menus::inv::install_bionic( p, patron, patient, true );
 
     if( !bionic ) {
         return;
@@ -513,7 +520,7 @@ void talk_function::bionic_install( npc &p )
     tmp->set_var( VAR_TRADE_IGNORE, 1 );
     const itype &it = *tmp->type;
 
-    signed int price = npc_trading::bionic_install_price( p, player_character, bionic );
+    signed int price = npc_trading::bionic_install_price( p, patient, bionic );
     bool const ret = npc_trading::pay_npc( p, price );
     tmp->erase_var( VAR_TRADE_IGNORE );
     if( !ret ) {
@@ -521,18 +528,32 @@ void talk_function::bionic_install( npc &p )
     }
 
     //Makes the doctor awesome at installing but not perfect
-    if( player_character.can_install_bionics( it, p, false, 20 ) ) {
+    if( patient.can_install_bionics( it, p, false, 20 ) ) {
         bionic.remove_item();
-        player_character.install_bionics( it, p, false, 20 );
+        patient.install_bionics( it, p, false, 20 );
     }
 }
 
-void talk_function::bionic_remove( npc &p )
+void talk_function::bionic_install( npc &p )
 {
-    Character &player_character = get_player_character();
-    const bionic_collection all_bio = *player_character.my_bionics;
+    Character &pc = get_player_character();
+    bionic_install_common( p, pc, pc );
+}
+
+void talk_function::bionic_install_allies( npc &p )
+{
+    npc *patient = pick_follower();
+    if( !patient ) {
+        return;
+    }
+    bionic_install_common( p, get_player_character(), *patient );
+}
+
+static void bionic_remove_common( npc &p, Character &patient )
+{
+    const bionic_collection all_bio = *patient.my_bionics;
     if( all_bio.empty() ) {
-        popup( _( "You don't have any bionics installed…" ) );
+        popup( _( "%s doesn't have any bionics installed…" ), patient.get_name() );
         return;
     }
 
@@ -572,10 +593,23 @@ void talk_function::bionic_remove( npc &p )
     }
 
     //Makes the doctor awesome at uninstalling but not perfect
-    if( player_character.can_uninstall_bionic( *bionics[bionic_index], p,
-            false, 20 ) ) {
-        player_character.uninstall_bionic( *bionics[bionic_index], p, false, 20 );
+    if( patient.can_uninstall_bionic( *bionics[bionic_index], p, false, 20 ) ) {
+        patient.uninstall_bionic( *bionics[bionic_index], p, false, 20 );
     }
+}
+
+void talk_function::bionic_remove( npc &p )
+{
+    bionic_remove_common( p, get_player_character() );
+}
+
+void talk_function::bionic_remove_allies( npc &p )
+{
+    npc *patient = pick_follower();
+    if( !patient ) {
+        return;
+    }
+    bionic_remove_common( p, *patient );
 }
 
 void talk_function::give_equipment( npc &p )
